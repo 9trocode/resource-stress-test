@@ -1,86 +1,64 @@
-// main.go
 package main
 
 import (
 	"fmt"
+	"math/rand"
 	"runtime"
 	"sync"
 	"time"
 )
 
-func main() {
-	fmt.Println("Starting resource-consuming application...")
-
-	// Display the number of CPU cores available
-	numCPU := runtime.NumCPU()
-	fmt.Printf("Number of CPU cores available: %d\n", numCPU)
-
-	// Allocate 4 GB of memory
-	fmt.Println("Allocating 4 GB of memory...")
-	var memoryUsage [][]byte
-	const totalMemory = 4 * 1024 * 1024 * 1024 // 4 GB
-	const chunkSize = 100 * 1024 * 1024       // 100 MB chunks
-
-	for i := 0; i < totalMemory/chunkSize; i++ {
-		chunk := make([]byte, chunkSize)
-		// Initialize the chunk to ensure memory is actually allocated
-		for j := range chunk {
-			chunk[j] = byte(j % 256)
+func consumeCPU(wg *sync.WaitGroup) {
+	defer wg.Done()
+	counter := 0
+	for {
+		_ = rand.Float64() * rand.Float64() // Perform some floating-point calculations
+		counter++
+		if counter%1000000 == 0 {
+			fmt.Printf("CPU iteration: %d\n", counter)
 		}
-		memoryUsage = append(memoryUsage, chunk)
-		fmt.Printf("Allocated %d MB/%d MB\n", (i+1)*100, 4000)
 	}
+}
 
-	fmt.Println("Memory allocation complete.")
-
-	// Start CPU-intensive computations on up to 4 CPU cores
-	fmt.Println("Starting CPU-intensive computations...")
-	var wg sync.WaitGroup
-	numGoroutines := 4 // Number of CPU-intensive goroutines
-
-	// Start a goroutine to report memory usage periodically
-	go func() {
-		for {
+func consumeMemory(wg *sync.WaitGroup, memoryChunkSize int) {
+	defer wg.Done()
+	var chunks [][]byte
+	counter := 0
+	for {
+		chunk := make([]byte, memoryChunkSize) // Allocate a chunk of memory
+		for i := range chunk {
+			chunk[i] = byte(rand.Intn(256)) // Fill memory with random data
+		}
+		chunks = append(chunks, chunk)
+		counter++
+		// Periodically print memory usage
+		if counter%100 == 0 {
 			var m runtime.MemStats
 			runtime.ReadMemStats(&m)
-			fmt.Printf("Memory Usage: Alloc = %v MiB, TotalAlloc = %v MiB, Sys = %v MiB, NumGC = %v\n",
-				bToMb(m.Alloc), bToMb(m.TotalAlloc), bToMb(m.Sys), m.NumGC)
-			time.Sleep(1 * time.Minute)
+			fmt.Printf("Memory iteration: %d, Allocated memory: %.2f MB\n", counter, float64(m.Alloc)/(1024*1024))
 		}
-	}()
+	}
+}
 
-	for i := 0; i < numGoroutines; i++ {
+func main() {
+	runtime.GOMAXPROCS(runtime.NumCPU()) // Use all available CPUs
+
+	var wg sync.WaitGroup
+
+	cpuWorkers := runtime.NumCPU() * 2 // Double the number of CPU cores
+	memoryChunkSize := 10 * 1024 * 1024 // Allocate 10 MB per chunk
+
+	fmt.Println("Starting CPU and memory consumption...")
+
+	// Start CPU consumers
+	for i := 0; i < cpuWorkers; i++ {
 		wg.Add(1)
-		go func(id int) {
-			defer wg.Done()
-			fmt.Printf("Goroutine %d started.\n", id+1)
-			for {
-				_ = fibonacci(35) // Adjust the input for desired CPU usage
-			}
-		}(i)
+		go consumeCPU(&wg)
 	}
 
-	// Let the application run for a specified duration
-	runDuration := 10 * time.Minute
-	fmt.Printf("Application will run for %v...\n", runDuration)
-	time.Sleep(runDuration)
+	// Start memory consumers
+	wg.Add(1)
+	go consumeMemory(&wg, memoryChunkSize)
 
-	// Signal goroutines to stop (in this example, we simply exit the program)
-	fmt.Println("Run duration complete. Exiting application.")
-	// Note: In this simple example, goroutines are not gracefully stopped.
-	// For a graceful shutdown, consider using context cancellation or other signaling mechanisms.
-}
-
-// fibonacci computes the nth Fibonacci number recursively.
-// Note: This is intentionally inefficient to consume CPU resources.
-func fibonacci(n int) int {
-	if n <= 1 {
-		return n
-	}
-	return fibonacci(n-1) + fibonacci(n-2)
-}
-
-// bToMb converts bytes to megabytes
-func bToMb(b uint64) uint64 {
-	return b / 1024 / 1024
+	wg.Wait() // This will block forever since the goroutines never exit
 }
