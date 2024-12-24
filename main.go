@@ -56,7 +56,7 @@ func main() {
 
 	var wg sync.WaitGroup
 
-	cpuWorkers := 6       // Use 6 workers for CPU
+	cpuWorkers := 5       // Use 6 workers for CPU
 	memoryLimitMB := 6000 // Limit memory usage to 6 GB
 
 	fmt.Println("Starting CPU and memory consumption...")
