@@ -29,7 +29,7 @@ func consumeMemory(wg *sync.WaitGroup, memoryLimitMB int, id int) {
 	allocatedMemory := 0
 
 	for {
-		if allocatedMemory+chunkSize > memoryLimitMB*1024*1024 {
+		if allocatedMemory >= memoryLimitMB*1024*1024 {
 			// Reuse memory when the limit is reached
 			if len(chunks) > 0 {
 				allocatedMemory -= len(chunks[0])
@@ -57,7 +57,7 @@ func main() {
 
 	var wg sync.WaitGroup
 
-	cpuWorkers := 5       // Use 6 workers for CPU
+	cpuWorkers := 6       // Use 6 workers for CPU
 	memoryLimitMB := 6000 // Limit memory usage to 6 GB
 
 	fmt.Println("Starting CPU and memory consumption...")
