@@ -5,7 +5,6 @@ import (
 	"math/rand"
 	"runtime"
 	"sync"
-	"time"
 )
 
 func consumeCPU(wg *sync.WaitGroup) {
