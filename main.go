@@ -29,20 +29,25 @@ func consumeMemory(wg *sync.WaitGroup, memoryLimitMB int, id int) {
 	allocatedMemory := 0
 	for {
 		if allocatedMemory+chunkSize > memoryLimitMB*1024*1024 {
-			// Maintain memory limit by keeping it constant
-			time.Sleep(100 * time.Millisecond)
-			continue
+			// Reuse memory when the limit is reached
+			if len(chunks) > 0 {
+				allocatedMemory -= len(chunks[0])
+				chunks = chunks[1:]
+			}
+		} else {
+			chunk := make([]byte, chunkSize)
+			for i := range chunk {
+				chunk[i] = byte(rand.Intn(256))
+			}
+			chunks = append(chunks, chunk)
+			allocatedMemory += len(chunk)
 		}
-		chunk := make([]byte, chunkSize)
-		for i := range chunk {
-			chunk[i] = byte(rand.Intn(256))
-		}
-		chunks = append(chunks, chunk)
-		allocatedMemory += len(chunk)
 		// Periodically print memory usage
 		var m runtime.MemStats
 		runtime.ReadMemStats(&m)
 		fmt.Printf("[Memory Worker %d] Memory usage: %.2f MB allocated (target: %d MB)\n", id, float64(m.Alloc)/(1024*1024), memoryLimitMB)
+		// Small delay to ensure continuous operation
+		time.Sleep(50 * time.Millisecond)
 	}
 }
 
@@ -51,7 +56,7 @@ func main() {
 
 	var wg sync.WaitGroup
 
-	cpuWorkers := 5       // Use 6 workers for CPU
+	cpuWorkers := 6       // Use 6 workers for CPU
 	memoryLimitMB := 6000 // Limit memory usage to 6 GB
 
 	fmt.Println("Starting CPU and memory consumption...")
