@@ -10,21 +10,15 @@ import (
 
 func consumeCPU(wg *sync.WaitGroup, id int, targetCPU float64) {
 	defer wg.Done()
-	workDuration := time.Duration(10 * time.Millisecond) // Fixed work duration per cycle
-	sleepDuration := time.Duration((1.0/targetCPU)*1000)*time.Millisecond - workDuration
-	if sleepDuration < 0 {
-		sleepDuration = 0
-	}
-
 	for {
 		startTime := time.Now()
 		for i := 0; i < int(1e6); i++ {
 			_ = rand.Float64() * rand.Float64() // Perform calculations
-			if time.Since(startTime) > workDuration {
-				break
-			}
 		}
-		time.Sleep(sleepDuration)
+		elapsed := time.Since(startTime).Seconds()
+		if elapsed < 1.0/targetCPU {
+			time.Sleep(time.Duration((1.0/targetCPU - elapsed) * float64(time.Second)))
+		}
 	}
 }
 
@@ -54,7 +48,7 @@ func consumeMemory(wg *sync.WaitGroup, memoryLimitMB int, id int) {
 		runtime.ReadMemStats(&m)
 		fmt.Printf("[Memory Worker %d] Memory usage: %.2f MB allocated (target: %d MB)\n", id, float64(m.Alloc)/(1024*1024), memoryLimitMB)
 		// Small delay to ensure continuous operation
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(50 * time.Millisecond)
 	}
 }
 
