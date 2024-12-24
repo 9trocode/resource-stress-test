@@ -10,17 +10,14 @@ import (
 
 func consumeCPU(wg *sync.WaitGroup, id int, targetCPU float64) {
 	defer wg.Done()
-	counter := 0
-	startTime := time.Now()
 	for {
-		_ = rand.Float64() * rand.Float64() // Perform some floating-point calculations
-		counter++
-		if counter%100000 == 0 {
-			elapsed := time.Since(startTime).Seconds()
-			if elapsed < 1.0/targetCPU {
-				time.Sleep(time.Duration((1.0/targetCPU - elapsed) * float64(time.Second)))
-			}
-			startTime = time.Now()
+		startTime := time.Now()
+		for i := 0; i < int(1e6); i++ {
+			_ = rand.Float64() * rand.Float64() // Perform calculations
+		}
+		elapsed := time.Since(startTime).Seconds()
+		if elapsed < 1.0/targetCPU {
+			time.Sleep(time.Duration((1.0/targetCPU - elapsed) * float64(time.Second)))
 		}
 	}
 }
@@ -32,23 +29,20 @@ func consumeMemory(wg *sync.WaitGroup, memoryLimitMB int, id int) {
 	allocatedMemory := 0
 	for {
 		if allocatedMemory+chunkSize > memoryLimitMB*1024*1024 {
-			if len(chunks) > 0 {
-				allocatedMemory -= len(chunks[0])
-				chunks = chunks[1:]
-			}
-		} else {
-			chunk := make([]byte, chunkSize)
-			for i := range chunk {
-				chunk[i] = byte(rand.Intn(256))
-			}
-			chunks = append(chunks, chunk)
-			allocatedMemory += len(chunk)
+			// Maintain memory limit by keeping it constant
+			time.Sleep(100 * time.Millisecond)
+			continue
 		}
+		chunk := make([]byte, chunkSize)
+		for i := range chunk {
+			chunk[i] = byte(rand.Intn(256))
+		}
+		chunks = append(chunks, chunk)
+		allocatedMemory += len(chunk)
 		// Periodically print memory usage
 		var m runtime.MemStats
 		runtime.ReadMemStats(&m)
 		fmt.Printf("[Memory Worker %d] Memory usage: %.2f MB allocated (target: %d MB)\n", id, float64(m.Alloc)/(1024*1024), memoryLimitMB)
-		time.Sleep(100 * time.Millisecond)
 	}
 }
 
@@ -57,7 +51,7 @@ func main() {
 
 	var wg sync.WaitGroup
 
-	cpuWorkers := 5 // Use 6 workers for CPU
+	cpuWorkers := 5       // Use 6 workers for CPU
 	memoryLimitMB := 5000 // Limit memory usage to 6 GB
 
 	fmt.Println("Starting CPU and memory consumption...")
