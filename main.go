@@ -47,7 +47,7 @@ func consumeMemory(wg *sync.WaitGroup, memoryLimitMB int, id int) {
 		// Periodically print memory usage
 		var m runtime.MemStats
 		runtime.ReadMemStats(&m)
-		fmt.Printf("[Memory Worker %d] Memory usage: %.2f MB allocated\n", id, float64(m.Alloc)/(1024*1024))
+		fmt.Printf("[Memory Worker %d] Memory usage: %.2f MB allocated (target: %d MB)\n", id, float64(m.Alloc)/(1024*1024), memoryLimitMB)
 		time.Sleep(100 * time.Millisecond)
 	}
 }
@@ -58,7 +58,7 @@ func main() {
 	var wg sync.WaitGroup
 
 	cpuWorkers := 5 // Use 6 workers for CPU
-	memoryLimitMB := 5000 // Limit memory usage to 6 GB
+	memoryLimitMB := 6000 // Limit memory usage to 6 GB
 
 	fmt.Println("Starting CPU and memory consumption...")
 
