@@ -56,7 +56,7 @@ func LogResourceUsage(interval time.Duration, stopChan <-chan struct{}) {
 func main() {
 	const (
 		cpuCount   = 5                // Number of CPU cores to simulate.
-		ramLimit   = 6 * 1024 * 1024 * 1024 // Memory limit in bytes (6 GB).
+		ramLimit   = 5 * 1024 * 1024 * 1024 // Memory limit in bytes (6 GB).
 		logInterval = 5 * time.Second  // Interval for logging resource usage.
 	)
 
