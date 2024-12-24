@@ -5,16 +5,20 @@ import (
 	"math/rand"
 	"runtime"
 	"sync"
+	"time"
 )
 
 func consumeCPU(wg *sync.WaitGroup) {
 	defer wg.Done()
 	counter := 0
+	startTime := time.Now()
 	for {
 		_ = rand.Float64() * rand.Float64() // Perform some floating-point calculations
 		counter++
 		if counter%1000000 == 0 {
-			fmt.Printf("CPU iteration: %d\n", counter)
+			elapsed := time.Since(startTime).Seconds()
+			fmt.Printf("CPU usage: %.2f vCPUs over %.2f seconds\n", float64(counter)/1000000.0, elapsed)
+			startTime = time.Now()
 		}
 	}
 }
@@ -34,7 +38,7 @@ func consumeMemory(wg *sync.WaitGroup, memoryChunkSize int) {
 		if counter%100 == 0 {
 			var m runtime.MemStats
 			runtime.ReadMemStats(&m)
-			fmt.Printf("Memory iteration: %d, Allocated memory: %.2f MB\n", counter, float64(m.Alloc)/(1024*1024))
+			fmt.Printf("Memory usage: %.2f MB allocated (%d iterations)\n", float64(m.Alloc)/(1024*1024), counter)
 		}
 	}
 }
