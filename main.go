@@ -40,11 +40,15 @@ func LogResourceUsage(interval time.Duration, stopChan <-chan struct{}) {
 			return
 		case <-time.After(interval):
 			runtime.ReadMemStats(&m)
-			fmt.Printf("[Resource Usage] Alloc = %.2f MB, TotalAlloc = %.2f MB, Sys = %.2f MB, NumGC = %d\n",
+			cpuCount := runtime.NumCPU()
+			goroutines := runtime.NumGoroutine()
+			fmt.Printf("[Resource Usage] Alloc = %.2f MB, TotalAlloc = %.2f MB, Sys = %.2f MB, NumGC = %d, Goroutines = %d, CPUs = %d\n",
 				float64(m.Alloc)/1024/1024,
 				float64(m.TotalAlloc)/1024/1024,
 				float64(m.Sys)/1024/1024,
-				m.NumGC)
+				m.NumGC,
+				goroutines,
+				cpuCount)
 		}
 	}
 }
