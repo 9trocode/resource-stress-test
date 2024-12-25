@@ -2,87 +2,156 @@ package main
 
 import (
 	"fmt"
-	"math/rand"
+	"os"
+	"os/signal"
 	"runtime"
 	"sync"
+	"syscall"
 	"time"
 )
 
-// SimulateCPUUsage creates a CPU-bound goroutine to simulate load.
-func SimulateCPUUsage(wg *sync.WaitGroup, stopChan <-chan struct{}) {
-	defer wg.Done()
-	for {
-		select {
-		case <-stopChan:
-			return
-		default:
-			// Simulate CPU load by performing calculations.
-			_ = rand.Float64() * rand.Float64()
-		}
-	}
-}
+const (
+	// Maximum number of CPUs to use
+	MaxCPUs = 5
 
-// SimulateMemoryUsage allocates and maintains a fixed amount of memory.
-func SimulateMemoryUsage(sizeInBytes int, stopChan <-chan struct{}) {
-	memory := make([]byte, sizeInBytes)
-	for i := range memory {
-		memory[i] = byte(rand.Intn(256))
-	}
-	<-stopChan // Wait until the application is stopped.
-}
+	// Maximum memory usage in bytes (6 GB)
+	MaxMemoryBytes = 6 * 1024 * 1024 * 1024 // 6 GB
 
-// LogResourceUsage logs memory and CPU usage periodically.
-func LogResourceUsage(interval time.Duration, stopChan <-chan struct{}) {
-	var m runtime.MemStats
-	for {
-		select {
-		case <-stopChan:
-			return
-		case <-time.After(interval):
-			runtime.ReadMemStats(&m)
-			cpuCount := runtime.NumCPU()
-			goroutines := runtime.NumGoroutine()
-			fmt.Printf("[Resource Usage] Alloc = %.2f MB, TotalAlloc = %.2f MB, Sys = %.2f MB, NumGC = %d, Goroutines = %d, CPUs = %d\n",
-				float64(m.Alloc)/1024/1024,
-				float64(m.TotalAlloc)/1024/1024,
-				float64(m.Sys)/1024/1024,
-				m.NumGC,
-				goroutines,
-				cpuCount)
-		}
-	}
-}
+	// Interval for logging (e.g., every 5 seconds)
+	LogInterval = 5 * time.Second
+
+	// Number of CPU-bound worker goroutines
+	NumWorkers = MaxCPUs
+)
 
 func main() {
-	const (
-		cpuCount   = 5                // Number of CPU cores to simulate.
-		ramLimit   = 5 * 1024 * 1024 * 1024 // Memory limit in bytes (6 GB).
-		logInterval = 5 * time.Second  // Interval for logging resource usage.
+	// Set the maximum number of CPUs
+	runtime.GOMAXPROCS(MaxCPUs)
+	fmt.Printf("Set GOMAXPROCS to %d\n", MaxCPUs)
+
+	// Allocate memory up to the limit
+	memory, err := allocateMemory(MaxMemoryBytes)
+	if err != nil {
+		fmt.Printf("Memory allocation failed: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("Memory allocation completed.")
+
+	// Start CPU-bound worker goroutines
+	var wg sync.WaitGroup
+	wg.Add(NumWorkers)
+	for i := 0; i < NumWorkers; i++ {
+		go cpuBoundWorker(i, &wg)
+	}
+	fmt.Printf("Started %d CPU-bound workers.\n", NumWorkers)
+
+	// Set up channel to listen for interrupt or terminate signals
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	// Start a ticker for logging
+	ticker := time.NewTicker(LogInterval)
+	defer ticker.Stop()
+
+	// Main loop
+	for {
+		select {
+		case <-ticker.C:
+			// Get memory stats
+			var m runtime.MemStats
+			runtime.ReadMemStats(&m)
+			allocMB := float64(m.Alloc) / 1024 / 1024
+
+			// Get number of CPUs
+			numCPU := runtime.GOMAXPROCS(0)
+
+			// Get number of goroutines
+			numGoroutines := runtime.NumGoroutine()
+
+			// Log the information
+			fmt.Printf("Memory Usage: %.2f MB | vCPUs: %d | Goroutines: %d\n", allocMB, numCPU, numGoroutines)
+		case sig := <-sigChan:
+			fmt.Printf("\nReceived signal: %s. Shutting down gracefully...\n", sig)
+			// Perform any necessary cleanup here
+			os.Exit(0)
+		}
+	}
+}
+
+// allocateMemory allocates memory up to the specified limit.
+// It returns a slice that holds the allocated memory to prevent garbage collection.
+func allocateMemory(limit int64) ([][]byte, error) {
+	var (
+		mu      sync.Mutex
+		memory  [][]byte
+		alloced int64
 	)
 
-	stopChan := make(chan struct{})
-	var wg sync.WaitGroup
+	chunkSize := int64(100 * 1024 * 1024) // 100 MB per chunk
+	for alloced+chunkSize <= limit {
+		chunk := make([]byte, chunkSize)
+		// Initialize the chunk to ensure memory is committed
+		for i := range chunk {
+			chunk[i] = 1
+		}
 
-	// Simulate CPU usage.
-	for i := 0; i < cpuCount; i++ {
-		wg.Add(1)
-		go SimulateCPUUsage(&wg, stopChan)
+		mu.Lock()
+		memory = append(memory, chunk)
+		alloced += chunkSize
+		mu.Unlock()
+
+		fmt.Printf("Allocated %d MB / %d MB\n", alloced/(1024*1024), limit/(1024*1024))
+		time.Sleep(100 * time.Millisecond) // Slight delay between allocations
 	}
 
-	// Simulate memory usage.
-	go SimulateMemoryUsage(ramLimit, stopChan)
+	// Final allocation to reach exactly the limit
+	remaining := limit - alloced
+	if remaining > 0 {
+		chunk := make([]byte, remaining)
+		for i := range chunk {
+			chunk[i] = 1
+		}
 
-	// Start logging resource usage.
-	go LogResourceUsage(logInterval, stopChan)
+		mu.Lock()
+		memory = append(memory, chunk)
+		alloced += remaining
+		mu.Unlock()
 
-	fmt.Println("Application is running. Press Ctrl+C to stop.")
+		fmt.Printf("Allocated %d MB / %d MB\n", alloced/(1024*1024), limit/(1024*1024))
+	}
 
-	// Block until the program is terminated.
-	stopSignal := make(chan struct{})
-	<-stopSignal
+	return memory, nil
+}
 
-	// Clean up resources.
-	close(stopChan)
-	wg.Wait()
-	fmt.Println("Application stopped.")
+// cpuBoundWorker performs a CPU-intensive task continuously.
+// For demonstration, it calculates prime numbers in an infinite loop.
+func cpuBoundWorker(id int, wg *sync.WaitGroup) {
+	defer wg.Done()
+	fmt.Printf("Worker %d started.\n", id)
+	num := 2
+	for {
+		if isPrime(num) {
+			// Found a prime number; do something if needed
+			// For now, we'll just ignore it to keep the loop busy
+		}
+		num++
+		// To prevent integer overflow
+		if num < 0 {
+			num = 2
+		}
+	}
+}
+
+// isPrime checks if a number is prime.
+// This is a naive implementation for demonstration purposes.
+func isPrime(n int) bool {
+	if n < 2 {
+		return false
+	}
+	for i := 2; i*i <= n; i++ {
+		if n%i == 0 {
+			return false
+		}
+	}
+	return true
 }
